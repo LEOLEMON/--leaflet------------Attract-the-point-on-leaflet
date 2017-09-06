@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+    <title>demo1</title>
+    <style type="text/css">
+        html, body {
+            height: 100%;
+            margin: 0;
+            border: 0;
+        }
+        #map{
+            height:100%;
+            width:100%;
+        }
+    </style>
+    <script src="http://libs.baidu.com/jquery/1.11.1/jquery.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.2.0/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.2.0/dist/leaflet.js"></script>
+    <script>
+        $(function () {
+            //定义point类
+            var Point = {
+                createNew: function () {
+                    var point = {
+                        longitude: 0,
+                        latitude: 0,
+                        speed: 0,
+                        direaction:0
+                    };
+                    point.icon = L.icon({
+                            iconUrl: "./style/images/man_control.png",
+                            iconSize: [10, 10],
+                            iconAnchor: [20, 20],
+                            popupAnchor: [0, -25]
+                        });
+
+                    return point;
+                }
+            }
+
+            //定义line类
+            var line = {
+                createNew: function () {
+                    var line = {
+                        length: 0,
+                        color:"#AAD3DF",
+                        weight: 3,
+                        fromPoint: 0,
+                        toPoint:0
+                    }
+                    return line;
+                }
+            }
+
+            //定义物理函数类
+            var Physical = {
+                calculateSpeed: function (y, x, direaction, speed) {
+                    //————————————根据速度和方向还有原始坐标计算新坐标————————————
+
+                    var time = 1;//走的时间
+                    var distance = time * speed;//走的距离
+                    var y_distance = Math.abs(Math.sin(direaction) * distance);//纬度方向走的距离
+                    var x_distance = Math.abs(Math.cos(direaction) * distance);//经度方向走的距离
+                    if (direaction > 0 && direaction < 90) {
+                        x += x_distance;
+                        y += y_distance;
+                    }
+                    else if (direaction > 90 && direaction < 180) {
+                        x -= x_distance;
+                        y += y_distance;
+                    }
+                    else if (direaction > 180 && direaction < 270) {
+                        x -= x_distance;
+                        y -= y_distance;
+                    }
+                    else if (direaction > 270 && direaction < 360) {
+                        x += x_distance;
+                        y -= y_distance;
+                    }
+                    var point = Point.createNew();
+                    point.longitude = x;
+                    point.latitude = y;
+                    point.speed = speed;
+                    point.direaction = direaction;
+                    point =  Physical.borderCollision(point);//计算新方向和坐标是否超出边框范围
+                    return point;
+                },
+                borderCollision: function (point) {
+                    //——————————碰撞边框导致反弹——————
+
+                    //点的新值
+                    var direaction = point.direaction;
+                    var x = point.longitude;
+                    var y = point.latitude;
+
+                    if (x > 360 || x < 360 || y > 90 || y < 90) {
+                        //判断碰撞后应该弹到哪个方向
+                        if (direaction > 0 && direaction < 90 && y > 80) {
+                            direaction = 360 - direaction;
+                        }
+                        else if (direaction > 0 && direaction < 90 && x > 335) {
+                            direaction = 180 - direaction;
+                        }
+                        else if (direaction > 90 && direaction < 180 && y > 80) {
+                            direaction = 360 - direaction;
+                        }
+                        else if (direaction > 90 && direaction < 180 && x < -330) {
+                            direaction = 180 - direaction;
+                        }
+                        else if (direaction > 180 && direaction < 270 && y < -81) {
+                            direaction = 360 - direaction;
+                        }
+                        else if (direaction > 180 && direaction < 270 && x < -330) {
+                            direaction = 540 - direaction;
+                        }
+                        else if (direaction > 270 && direaction < 360 && y < -81) {
+                            direaction = 360 - direaction;
+                        }
+                        else if (direaction > 270 && direaction < 360 && x > 335) {
+                            direaction = 540 - direaction;
+                        }
+                    }
+                    point.direaction = direaction;
+                    return point
+                }
+            }
+
+            //地图有关函数
+            function initialize() {
+                //——————————初始化函数—————————————
+                startanimate = true;
+
+                this.map = L.map("map", {
+                    //控件样式取消
+                    attributionControl: false,
+                    zoomControl: true,
+                    //鼠标滚轮缩放取消
+                    scrollWheelZoom: false,
+                    //按键移动取消
+                    keyboard: false,
+                    //双击放大取消
+                    doubleClickZoom: false,
+                    //拖动地图取消
+                    dragging: false,
+                    //定义地理中心
+                    center: [0, 0],
+                    zoom: 2
+                });
+
+                //添加地图
+                L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png').addTo(this.map);
+            };
+
+            function run() {
+
+                //开始迭代
+                function start() {
+                    if (this.t != null)
+                        clearTimeout(this.t);
+                    if (this.startanimate) {
+                        if (typeof this.pointArray == "undefined")
+                            this.pointArray = new Array();
+                        this.pointArray = declarePoint(this.pointArray);
+                        this.markerLayerGroup = drawPoint(this.markerLayerGroup);
+                        this.t = setTimeout(run, 10);
+                    }
+                }
+
+                //定义并计算点
+                function declarePoint(pointArray) {
+                    //事先不存在点
+                    if (pointArray.length == 0) {
+                        for (i = 0; i < 20; i++) {
+                            var point = Point.createNew();
+                            point.longitude = (1 - 2 * Math.random()) * 360;
+                            point.latitude =(1 - 2 * Math.random()) * 90 ;
+                            point.speed = 1 - Math.random() * 0.85;
+                            point.direaction = 360 * Math.random();
+                            pointArray.push(point);
+                        }
+                    }
+                    else {
+                        var point = new Array();
+                        for (i = 0; i < 20; i++) {
+                            y = pointArray[i].latitude;
+                            x = pointArray[i].longitude;
+                            direaction = pointArray[i].direaction;
+                            speed = pointArray[i].speed;
+                            point.push(Physical.calculateSpeed(y, x, direaction, speed));//计算新坐标
+                        }
+                        pointArray = point;
+                    }
+                    return pointArray;
+                }
+
+                //地图生成点
+                function drawPoint(markerLayerGroup) {
+                    if (typeof markerLayerGroup != "undefined")
+                        markerLayerGroup.clearLayers();
+
+                    var markerLayer = new Array();
+                    for (var i = 0 ; i < this.pointArray.length; i++) {
+                        var marker = L.marker([this.pointArray[i].latitude, this.pointArray[i].longitude], {
+                            //draggable: false,
+                            //keyboard: false
+                            icon: this.pointArray[i].icon
+                        });
+                        marker.bindPopup("纬度为：" + this.pointArray[i].latitude + "\n 经度为：" + this.pointArray[i].longitude + "方向为：" + this.pointArray[i].direaction + "速度为：" + this.pointArray[i].speed).openPopup();
+                        markerLayer.push(marker);
+                    }
+                    markerLayerGroup = L.layerGroup(markerLayer);
+                    markerLayerGroup.addTo(this.map);
+                    return markerLayerGroup;
+                }
+
+                //比较两点间距离生成线
+                function calculateDistanceToCreateLine(point,pointArray) {
+                    for (var pointA in pointArray) {
+                        var p_x = point.longitude;
+                        var p_y = point.latitude;
+                        var pA_x = pointA.longitude;
+                        var pA_y = pointA.latitude;
+
+                    }
+                }
+
+                return start();
+            }
+
+            initialize();
+
+            run();
+
+            map.on("click", function (e) {
+                if (startanimate == true) {
+                    startanimate = false;
+                }
+                else {
+                    startanimate = true;
+                    run();
+                }
+            });
+        });
+    </script>
+</head>
+<body>
+    <div id="map"></div>
+</body>
+</html>
