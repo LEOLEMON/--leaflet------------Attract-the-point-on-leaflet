@@ -29,7 +29,7 @@
                         direaction:0
                     };
                     point.icon = L.icon({
-                            iconUrl: "./style/images/man_control.png",
+                            iconUrl: "../style/images/man_control.png",
                             iconSize: [10, 10],
                             iconAnchor: [20, 20],
                             popupAnchor: [0, -25]
@@ -43,8 +43,9 @@
             var line = {
                 createNew: function () {
                     var line = {
-                        length: 0,
-                        color:"#AAD3DF",
+                        stroke:true,
+                        color: '#8ADE4E',
+                        opacity: 0,
                         weight: 3,
                         fromPoint: 0,
                         toPoint:0
@@ -169,6 +170,10 @@
 
                 //定义并计算点
                 function declarePoint(pointArray) {
+                    //判断是否有线要素
+                    if (this.polylineGroup != undefined)
+                        this.polylineGroup.clearLayers();
+
                     //事先不存在点
                     if (pointArray.length == 0) {
                         for (i = 0; i < 20; i++) {
@@ -177,19 +182,22 @@
                             point.latitude =(1 - 2 * Math.random()) * 90 ;
                             point.speed = 1 - Math.random() * 0.85;
                             point.direaction = 360 * Math.random();
+                            calculateDistanceToCreateLine(point, this.pointArray);//判断是否蛇生成线
                             pointArray.push(point);
                         }
                     }
                     else {
-                        var point = new Array();
+                        var pointGroup = new Array();
                         for (i = 0; i < 20; i++) {
                             y = pointArray[i].latitude;
                             x = pointArray[i].longitude;
                             direaction = pointArray[i].direaction;
                             speed = pointArray[i].speed;
-                            point.push(Physical.calculateSpeed(y, x, direaction, speed));//计算新坐标
+                            var point = Physical.calculateSpeed(y, x, direaction, speed);
+                            calculateDistanceToCreateLine(point, this.pointArray);//判断是否蛇生成线
+                            pointGroup.push(point);//计算新坐标
                         }
-                        pointArray = point;
+                        pointArray = pointGroup;
                     }
                     return pointArray;
                 }
@@ -216,13 +224,37 @@
 
                 //比较两点间距离生成线
                 function calculateDistanceToCreateLine(point,pointArray) {
+                    var lineGroup = new Array();
                     for (var pointA in pointArray) {
                         var p_x = point.longitude;
                         var p_y = point.latitude;
-                        var pA_x = pointA.longitude;
-                        var pA_y = pointA.latitude;
-
+                        var pA_x = pointArray[pointA].longitude;
+                        var pA_y = pointArray[pointA].latitude;
+                        var distance = Math.sqrt(Math.pow(p_x - pA_x, 2) + Math.pow(p_y - pA_y, 2));
+                        if (distance <= 40) {
+                            var latlns = [
+                                [p_y, p_x],
+                                [pA_y,pA_x]
+                            ]
+                            var lineStyle = line.createNew();
+                            lineStyle.opacity = function (distance) {
+                                var o = 1 - distance / 40;
+                                return o;
+                            }(distance);
+                            var polyline = L.polyline(latlns, lineStyle);
+                            lineGroup.push(polyline);
+                            if (typeof this.polylineGroup == "undefined") {
+                                this.polylineGroup = L.layerGroup().addLayer(polyline);
+                            }
+                            else {
+                                this.polylineGroup.addLayer(polyline);
+                            }
+                        }
                     }
+                    if (typeof this.polylineGroup != "undefined")
+                        this.polylineGroup.addTo(map);
+                       
+
                 }
 
                 return start();
