@@ -26,10 +26,21 @@
                         longitude: 0,
                         latitude: 0,
                         speed: 0,
-                        direaction:0
+                        direaction: 0,
+                        //保存物理参数，基础值有速度和方向
+                        //可以动态添加来自不同点的加速度
+                        physical: {
+                            present: {
+                                speed: 0,
+                                direaction:0
+                            },
+                            externalForceAccelerate: [],
+                            Accelerate:{}
+                        }
+
                     };
                     point.icon = L.icon({
-                            iconUrl: "./style/images/man_control.png",
+                            iconUrl: "../style/images/man_control.png",
                             iconSize: [10, 10],
                             iconAnchor: [20, 20],
                             popupAnchor: [0, -25]
@@ -44,8 +55,11 @@
                 createNew: function () {
                     var line = {
                         stroke:true,
-                        color: '#8ADE4E',
+                        color: '#8ADE4E', 
                         opacity: 0,
+                        fill: true,
+                        fillcolor: '#E21918',
+                        fillopacity:1,
                         weight: 3,
                         fromPoint: 0,
                         toPoint:0
@@ -53,6 +67,15 @@
                     return line;
                 }
             }
+
+            //定义基本运动参数类
+            var motionParameter = {
+                number:20,//运动例子数量
+                speed: 0,//速度（度/毫秒）
+                time: 10,//迭代频率（毫秒）
+                AcceleratedSpeed: 9//加速度（度/豪秒^2）
+            }
+
 
             //定义物理函数类
             var Physical = {
@@ -82,16 +105,16 @@
                     var point = Point.createNew();
                     point.longitude = x;
                     point.latitude = y;
-                    point.speed = speed;
-                    point.direaction = direaction;
-                    point =  Physical.borderCollision(point);//计算新方向和坐标是否超出边框范围
+                    point.physical.present.speed = speed;
+                    point.physical.present.direaction = direaction;
+                    point = Physical.borderCollision(point);//计算新方向和坐标是否超出边框范围
                     return point;
                 },
                 borderCollision: function (point) {
                     //——————————碰撞边框导致反弹——————
 
                     //点的新值
-                    var direaction = point.direaction;
+                    var direaction = point.physical.present.direaction;
                     var x = point.longitude;
                     var y = point.latitude;
 
@@ -122,12 +145,144 @@
                             direaction = 540 - direaction;
                         }
                     }
-                    point.direaction = direaction;
+                    point.physical.present.direaction = direaction;
                     return point
+                },
+                calculatePointDistance: function (pointA, pointB) {
+                    //计算两点间距离
+                    var distance = Math.sqrt(Math.pow(pointA.longitude - pointB.longitude, 2) + Math.pow(pointA.latitude - pointB.latitude, 2));
+                    return distance;
+                },
+                calculateQuadrant:function(poingA,pointB){
+                    //——————————计算pointB在pointA的哪个象限——————
+                    var x_icrement = pointB.longitude - pointA.longitude;
+                    var y_icrement = pointB.latitude - pointB.latitude;
+                    if(x_icrement>0 && y_icrement > 0){
+                        return 1;
+                    }
+                    else if(x_icrement<0 && y_icrement > 0){
+                        return 2;
+                    }
+                    else if(x_icrement<0 && y_icrement < 0){
+                        return 3;
+                    }
+                    else if(x_icrement>0 && y_icrement < 0){
+                        return 4;
+                    }   
+                },
+                calculateAcceleratedSpeed:function(point,pointArray,string){
+                    //——————————点与点之间的引力导致的产生的加速度————————
+                    var a = point;
+                    var b;
+                    if(string =="backward"){
+                        for (var pointID in pointArray) {
+                            //向上循环点
+                            b = pointArray[pointID];
+                            var distance = Physical.calculatePointDistance(a, b);
+                            if (distance < 40) {
+                                var angle;
+                                var qunadrant = Physical.calculateQuadrant(a,b);//计算b点在a点的哪个象限
+                                if (qunadrant == 1 && qunadrant == 3) {
+                                    angle = Math.atan((b.latitude - a.latitude) / (b.longitude - a.longitude));
+                                }
+                                else if (qunadrant == 2 && qunadrant == 4) {
+                                    angle = angle = Math.atan((b.latitude - a.latitude) / (b.longitude - a.longitude)) + 360;
+                                }
+                                a.physical.externalForceAccelerate.push(angle);
+                            }
+                        }
+                    }
+                    else if (string == "forward") {
+                        //合加速度方向和大小
+                        var AcceleratedSpeed = 0;
+                        var direaction = 0;
+
+                        //向下循环点
+                        for (var pointID in pointArray) {
+                            a = pointArray[pointID];
+                            for (var i = pointID + 1; i < pointArry.length; i++) {
+                                b = pointArray[i];
+                                var distance = Physical.calculatePointDistance(a, b);
+                                if (distance < 40) {
+                                    var angle;
+                                    var qunadrant = Physical.calculateQuadrant(a, b);//计算b点在a点的哪个象限
+                                    if (qunadrant == 1 && qunadrant == 3) {
+                                        angle = Math.atan((b.latitude - a.latitude) / (b.longitude - a.longitude));
+                                    }
+                                    else if (qunadrant == 2 && qunadrant == 4) {
+                                        angle = angle = Math.atan((b.latitude - a.latitude) / (b.longitude - a.longitude)) + 360;
+                                    }
+                                    a.physical.externalForceAccelerate.push(angle);
+                                }
+                            }
+
+                            //循环某个点结束，得到点所有的加速度方向,计算合加速度方向和大小()
+                            for (var angleID in a.physical.externalForceAccelerate) {
+                                var vectorSize = motionParameter.AcceleratedSpeed;
+                                var vectorDireaction = a.physical.externalForceAccelerate.pop();
+                                if (direaction = 0) {
+                                    AcceleratedSpeed = vectorSize;
+                                    direaction = vectorDireaction;
+                                }
+                                else {
+                                    var vectorSum = Physical.calculateVectorSum(AcceleratedSpeed, direaction, vectorSize, vectorDireaction);
+                                    AcceleratedSpeed = vectorSum.Accelerated;
+                                    direaction = vectorSum.direaction;02
+                                }
+                            }
+
+                            //如果存在加速度
+                            if (AcceleratedSpeed != 0) {
+                                a.physical.Accelerate.AcceleratedSpeed = AcceleratedSpeed;
+                                a.physical.Accelerate.direaction = direaction;
+                            }
+
+                        }
+                    }
+                },
+                calculateVectorSum: function (vectorSize1, vectorDireaction1, vectorSize2, vectorDireaction2) {
+                    //——————————根据给定两个矢量的方向和大小，计算矢量和的方向和大小————————
+                    var Accelerated = 0;
+                    var direaction = 0;
+                    var includedAngle;
+                    var difference = vectorDireaction1 - vectorDireaction2;
+                    if (difference > 0 && difference < 180) {
+                        includedAngle = difference;
+                        direaction = includedAngle / 2 + vectorDireaction2;
+                    }
+                    else if (difference > 180) {
+                        includedAngle = 360 - difference;
+                        direaction = includedAngle / 2 + vectorDireaction1;
+                        if (direaction > 360)
+                            direaction -= 360;
+                    }
+                    else if (difference < 0 && difference > -180) {
+                        includedAngle = -difference;
+                        direaction = includedAngle / 2 + vectorDireaction1;
+                    }
+                    else if (difference < -180) {
+                        includedAngle = 360 + difference;
+                        direaction = includedAngle / 2 + vectorDireaction2;
+                        if (direaction > 360)
+                            direaction -= 360;
+                    }
+                    Accelerated = Math.sqrt(Math.pow(vectorSize1, 2) + Math.pow(vectorSize2, 2) - 2 * vectorSize1 * vectorSize2 * Math.cos(180 - includedAngle));
+                    var vectoerSum = {};
+                    vectoerSum.direaction = direaction;
+                    vectoerSum.Accelerated = Accelerated;
+                    return vectoerSum;
+                },
+                calculateSpeedAccrodingAcceleratedSpeed: function (point) {
+                    //根据点收到的合加速度，计算新的速度和方向，并删除加速度
+                    if (point.physical.Accelerate != {}) {
+                        var speed = 0;
+
+                    }
                 }
+
             }
 
-            //地图有关函数
+            //基本地图函数
             function initialize() {
                 //——————————初始化函数—————————————
                 startanimate = true;
@@ -153,6 +308,7 @@
                 L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png').addTo(this.map);
             };
 
+            //主函数0
             function run() {
 
                 //开始迭代
@@ -180,9 +336,10 @@
                             var point = Point.createNew();
                             point.longitude = (1 - 2 * Math.random()) * 360;
                             point.latitude =(1 - 2 * Math.random()) * 90 ;
-                            point.speed = 1 - Math.random() * 0.85;
-                            point.direaction = 360 * Math.random();
-                            calculateDistanceToCreateLine(point, this.pointArray);//判断是否蛇生成线
+                            point.physical.present.speed = 1 - Math.random() * 0.85;
+                            point.physical.present.direaction = 360 * Math.random();
+                            calculateDistanceToCreateLine(point, pointArray);//判断是否生成线
+                            Physical.calculateAcceleratedSpeed(point, pointArray, "backward");//计算由附近点吸引导致的加速度
                             pointArray.push(point);
                         }
                     }
@@ -191,12 +348,14 @@
                         for (i = 0; i < 20; i++) {
                             y = pointArray[i].latitude;
                             x = pointArray[i].longitude;
-                            direaction = pointArray[i].direaction;
-                            speed = pointArray[i].speed;
+                            direaction = pointArray[i].physical.present.direaction;
+                            speed = pointArray[i].physical.present.speed;
                             var point = Physical.calculateSpeed(y, x, direaction, speed);
-                            calculateDistanceToCreateLine(point, this.pointArray);//判断是否蛇生成线
+                            calculateDistanceToCreateLine(point, this.pointArray);//判断是否生成线
                             pointGroup.push(point);//计算新坐标
                         }
+                        var point = null;
+                        Physical.calculateAcceleratedSpeed(point, pointGroup, "backward");//计算由附近点吸引导致的加速度
                         pointArray = pointGroup;
                     }
                     return pointArray;
@@ -226,15 +385,11 @@
                 function calculateDistanceToCreateLine(point,pointArray) {
                     var lineGroup = new Array();
                     for (var pointA in pointArray) {
-                        var p_x = point.longitude;
-                        var p_y = point.latitude;
-                        var pA_x = pointArray[pointA].longitude;
-                        var pA_y = pointArray[pointA].latitude;
-                        var distance = Math.sqrt(Math.pow(p_x - pA_x, 2) + Math.pow(p_y - pA_y, 2));
+                        var distance = Physical.calculatePointDistance(point, pointArray[pointA]);
                         if (distance <= 40) {
                             var latlns = [
-                                [p_y, p_x],
-                                [pA_y,pA_x]
+                                [point.latitude, point.longitude],
+                                [pointArray[pointA].latitude, pointArray[pointA].longitude]
                             ]
                             var lineStyle = line.createNew();
                             lineStyle.opacity = function (distance) {
@@ -251,7 +406,7 @@
                             }
                         }
                     }
-                    if (typeof this.polylineGroup != "undefined")
+                    if (typeof this.polylineGroup != "undefined" )
                         this.polylineGroup.addTo(map);
                        
 
